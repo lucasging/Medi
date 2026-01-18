@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
+import bcrypt from "bcryptjs";
 
 // create a new react context, used to share authentication-related state and functions across the application
 const AuthContext = createContext();
@@ -10,14 +11,23 @@ export const AuthContextProvider = ({ children }) => {
 
   // function to signup a new user
   const signUpNewUser = async (email, password) => {
+    // Password complexity check
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    if (!passwordRegex.test(password)) {
+      return { success: false, error: "Password does not meet complexity requirements." };
+    }
+
+    // Hash the password before sending it to the server
+    const hashedPassword = await bcrypt.hash(password, 10);
+
     const { data, error } = await supabase.auth.signUp({
       email: email.toLowerCase(),
-      password: password,
+      password: hashedPassword,
     });
 
     if (error) {
-      console.error("Error signing up: ", error);
-      return { success: false, error };
+      console.error("Error signing up: ", error.message);
+      return { success: false, error: error.message };
     }
 
     return { success: true, data };
@@ -26,9 +36,12 @@ export const AuthContextProvider = ({ children }) => {
   // function to sign in an existing
   const signInUser = async (email, password) => {
     try {
+      // Hash the password before sending it to the server
+      const hashedPassword = await bcrypt.hash(password, 10);
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.toLowerCase(),
-        password: password,
+        password: hashedPassword,
       });
 
       if (error) {
@@ -39,7 +52,7 @@ export const AuthContextProvider = ({ children }) => {
       console.log("Sign-in success:", data);
       return { success: true, data };
     } catch (error) {
-      console.error("Unexpected error during sign-in:", err.message);
+      console.error("Unexpected error during sign-in:", error.message);
       return {
         success: false,
         error: "An unexpected error occurred. Please try again.",
@@ -49,9 +62,15 @@ export const AuthContextProvider = ({ children }) => {
 
   // function to sign out a user
   async function signOut() {
+    // Check if the user is authenticated before signing out
+    if (!session) {
+      console.error("No active session to sign out.");
+      return;
+    }
+
     const { error } = await supabase.auth.signOut();
     if (error) {
-      console.error("Error signing out:", error);
+      console.error("Error signing out:", error.message);
     }
   }
 
